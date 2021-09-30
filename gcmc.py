@@ -59,7 +59,7 @@ class GCMCConv(nn.Module):
             MP_{j -> i, r} = W * feature_{j} / ( N_{i, r} * N_{j, r} )
                 where N_{i} ; number of neighbors_{i, r} ** (1/2)
         2. aggregation
-            \sigma_{j \in N(i), r} MP_{j -> i, r}
+            \sum_{j \in N(i), r} MP_{j -> i, r}
         """
         if isinstance(feats, tuple):
             src_feats, dst_feats = feats
@@ -128,7 +128,7 @@ class GCMCLayer(nn.Module):
                                             out_feats_dim = self.message_dim,
                                             drop_out = drop_out)
             
-            # convolution on user -> item graph
+            # convolution on item -> user graph
             conv[item_to_user_key] = GCMCConv(in_feats_dim = item_feats_dim,
                                             out_feats_dim = self.message_dim,
                                             drop_out = drop_out)
@@ -159,6 +159,29 @@ class GCMCLayer(nn.Module):
         return feats.contiguous().view(-1, self.hidden_feats_dim)
 
     def forward(self, graph, ufeats, ifeats, ukey = 'user', ikey = 'item'):
+        """
+        Paramters
+        ---------
+        graph : dgl.graph
+        ufeats, ifeats : torch.FloatTensor
+            node features
+        ukey, ikey : str
+            target node types
+
+        Returns
+        -------
+        ufeats, ifeats : torch.FloatTensor
+            output features
+
+        Notes
+        -----
+        1. message passing
+            MP_{i} = \{ MP_{i, r_{1}}, MP_{i, r_{2}}, ... \}
+        2. aggregation
+            h_{i} = \sigma( aggregate( MP_{i} ) )
+        2. output
+            out_{i} = \sigma( W * h_{i} )
+        """
         feats = {
             ukey : ufeats,
             ikey : ifeats
