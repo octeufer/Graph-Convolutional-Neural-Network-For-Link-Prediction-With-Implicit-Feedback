@@ -30,6 +30,7 @@ class Trainer:
                                 device = device)
 
     def train(self,
+            n_layers = 1,
             hidden_feats_dim = 500,
             out_feats_dim = 75,
             agg = 'stack',
@@ -47,7 +48,8 @@ class Trainer:
 
         logging.basicConfig(filename='./train.log')
 
-        model = GCMC(edge_types = self.dataset.possible_rating_values,
+        model = GCMC(n_layers = n_layers,
+                    edge_types = self.dataset.possible_rating_values,
                     user_feats_dim = self.dataset.user_feature_shape[1],
                     item_feats_dim = self.dataset.movie_feature_shape[1],
                     hidden_feats_dim = hidden_feats_dim,
@@ -56,6 +58,7 @@ class Trainer:
                     drop_out = drop_out,
                     activation = activation,
                     n_basis = n_basis)
+        print(model)
 
         device = self.dataset._device
         model = model.to(device)
