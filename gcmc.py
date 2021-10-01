@@ -84,7 +84,6 @@ class GCMCLayer(nn.Module):
                 edge_types,
                 user_feats_dim,
                 item_feats_dim,
-                hidden_feats_dim,
                 out_feats_dim,
                 agg = 'sum',
                 drop_out = 0.,
@@ -98,10 +97,8 @@ class GCMCLayer(nn.Module):
             dimension of user features
         item_feats_dim : int
             dimension of item features
-        hidden_feats_dim : int
-            dimension of hidden features
         out_feats_dim : int
-            dimension of output features
+            dimension of hidden features (output dimension)
         agg : str
             aggreration type
         activation : str
@@ -111,12 +108,12 @@ class GCMCLayer(nn.Module):
         self.agg = agg
 
         if agg == 'sum':
-            self.message_dim = hidden_feats_dim
+            self.message_dim = out_feats_dim
         else:
             n_etypes = len(edge_types)
-            assert hidden_feats_dim % n_etypes == 0, f"out_feats_dim must be a multiple of {n_etypes} ( len(edge_types) )"
-            self.message_dim = hidden_feats_dim // n_etypes
-        self.hidden_feats_dim = hidden_feats_dim
+            assert out_feats_dim % n_etypes == 0, f"out_feats_dim must be a multiple of {n_etypes} ( len(edge_types) )"
+            self.message_dim = out_feats_dim // n_etypes
+        self.out_feats_dim = out_feats_dim
 
         conv = {}
         for edge in edge_types:
@@ -136,27 +133,17 @@ class GCMCLayer(nn.Module):
         self.conv = dgl.nn.pytorch.HeteroGraphConv(conv, aggregate = agg)
         self.activation_agg = activation_map[activation]
         self.feature_dropout = nn.Dropout(drop_out)
-        
-        self.linear_user = nn.Linear(hidden_feats_dim, out_feats_dim)
-        self.linear_item = nn.Linear(hidden_feats_dim, out_feats_dim)
-        self.activation_out = activation_map[activation]
-
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        torch.nn.init.xavier_uniform_(self.linear_user.weight)
-        torch.nn.init.xavier_uniform_(self.linear_item.weight)
 
     def flatten(self, feats):
         """
         if agg == 'stack':
             conv out : (n_users, n_edges, message_feats_dim)
-            returns : (n_users, n_edges * message_feats_dim) i.e. (n_users, hidden_feats_dim)
+            returns : (n_users, n_edges * message_feats_dim) i.e. (n_users, out_feats_dim)
         else:
-            conv out : (n_users, hidden_feats_dim)
-            returns : (n_users, hidden_feats_dim)
+            conv out : (n_users, out_feats_dim)
+            returns : (n_users, out_feats_dim)
         """
-        return feats.contiguous().view(-1, self.hidden_feats_dim)
+        return feats.contiguous().view(-1, self.out_feats_dim)
 
     def forward(self, graph, ufeats, ifeats, ukey = 'user', ikey = 'item'):
         """
@@ -179,8 +166,6 @@ class GCMCLayer(nn.Module):
             MP_{i} = \{ MP_{i, r_{1}}, MP_{i, r_{2}}, ... \}
         2. aggregation
             h_{i} = \sigma( aggregate( MP_{i} ) )
-        2. output
-            out_{i} = \sigma( W * h_{i} )
         """
         feats = {
             ukey : ufeats,
@@ -191,12 +176,10 @@ class GCMCLayer(nn.Module):
         ufeats = self.flatten(out[ukey])
         ufeats = self.activation_agg(ufeats)
         ufeats = self.feature_dropout(ufeats)
-        ufeats = self.activation_out(self.linear_user(ufeats))
 
         ifeats = self.flatten(out[ikey])
         ifeats = self.activation_agg(ifeats)
         ifeats = self.feature_dropout(ifeats)
-        ifeats = self.activation_out(self.linear_item(ifeats))
 
         return ufeats, ifeats
 
@@ -223,12 +206,11 @@ if __name__ == '__main__':
     model = GCMCLayer(edge_types = ratings,
                         user_feats_dim = ufeats_dim,
                         item_feats_dim = ifeats_dim,
-                        hidden_feats_dim = 24,
-                        out_feats_dim = 16,
+                        out_feats_dim = 24,
                         agg = 'sum',
                         drop_out = 0.,
                         activation = 'relu')
 
     ufeats, ifeats = model(g, ufeats, ifeats)
-    print(ufeats.shape)
-    print(ifeats.shape)
+    print(ufeats.shape) # (n_users, out_feats_dim)
+    print(ifeats.shape) # (n_items, out_feats_dim)

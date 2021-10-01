@@ -4,6 +4,8 @@ import torch.nn as nn
 from gcmc import GCMCLayer
 from decoder import BilinearDecoder
 
+from utils import activation_map
+
 
 class GCMC(nn.Module):
     def __init__(self,
@@ -51,10 +53,19 @@ class GCMC(nn.Module):
                                             activation = activation))
             user_feats_dim, item_feats_dim = hidden_feats_dim, hidden_feats_dim
 
+        self.linear_user = nn.Linear(hidden_feats_dim, out_feats_dim)
+        self.linear_item = nn.Linear(hidden_feats_dim, out_feats_dim)
+        self.activation_out = activation_map[activation]
             
         self.decoder = BilinearDecoder(feats_dim = out_feats_dim,
                                         n_classes = len(edge_types),
                                         n_basis = n_basis)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        torch.nn.init.xavier_uniform_(self.linear_user.weight)
+        torch.nn.init.xavier_uniform_(self.linear_item.weight)
 
     def forward(self,
                 enc_graph,
@@ -63,8 +74,33 @@ class GCMC(nn.Module):
                 ifeats,
                 ukey = 'user',
                 ikey = 'item'):
+        """
+        Parameters
+        ----------
+        enc_graph : dgl.graph
+        dec_graph : dgl.homograph
+
+        Notes
+        -----
+        1. GCMC encoder (GAE ; Graph AutoEncoder)
+            1) message passing
+                MP_{i} = \{ MP_{i, r_{1}}, MP_{i, r_{2}}, ... \}
+            2) aggregation
+                h_{i} = \sigma( aggregate( MP_{i} ) )
+
+        2. final features
+            user_{i} = \sigma( W_u * h_{i} )
+            item_{j} = \sigma( W_v * h_{j} )
+
+        3. Bilinear decoder
+            logits_{i, j, r} = ufeats_{i} @ Q_r @ ifeats_{j}
+        """
+
         for encoder in self.encdoers:
             ufeats, ifeats = encoder(enc_graph, ufeats, ifeats, ukey, ikey)
+
+        ufeats = self.activation_out(self.linear_user(ufeats))
+        ifeats = self.activation_out(self.linear_item(ifeats))
 
         pred_edge_types = self.decoder(dec_graph, ufeats, ifeats, ukey, ikey)
 
