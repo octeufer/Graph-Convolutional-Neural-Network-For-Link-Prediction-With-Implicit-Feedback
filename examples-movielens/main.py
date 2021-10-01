@@ -32,8 +32,8 @@ class Trainer:
     def train(self,
             hidden_feats_dim = 500,
             out_feats_dim = 75,
-            agg = 'sum',
-            drop_out = 0.1,
+            agg = 'stack',
+            drop_out = 0.7,
             activation = 'leaky',
             n_basis = 2,
             lr = 0.01,
@@ -100,22 +100,19 @@ class Trainer:
             count_num += pred_ratings.shape[0]
 
             if iter_idx and iter_idx % log_interval == 0:
-                print(f"[train {iter_idx}/{iteration}-iter] loss : {count_loss/iter_idx:.4f}, rmse : {count_rmse/count_num:.4f}")
-                # logging.info(f"[train {iter_idx}/{iteration}-iter] loss : {count_loss/iter_idx:.4f}, rmse : {count_rmse/count_num:.4f}")
+                log = f"[{iter_idx}/{iteration}-iter] | [train] loss : {count_loss/iter_idx:.4f}, rmse : {count_rmse/count_num:.4f}"
                 count_rmse, count_num = 0, 0
 
             if iter_idx and iter_idx % (log_interval*10) == 0:
                 valid_rmse = self.evaluate(model, self.dataset, possible_edge_types, data_type = 'valid')
-                print(f"[valid {iter_idx}/{iteration}-iter] rmse : {valid_rmse:.4f}")
-                # logging.info(f"[valid {iter_idx}/{iteration}-iter] rmse : {valid_rmse:.4f}")
+                log += f" | [valid] rmse : {valid_rmse:.4f}"
 
                 if valid_rmse < best_valid_rmse:
                     best_valid_rmse = valid_rmse
                     no_better_valid = 0
                     best_iter = iter_idx
                     best_test_rmse = self.evaluate(model, self.dataset, possible_edge_types, data_type = 'test')
-                    print(f"[test {iter_idx}/{iteration}-iter] rmse : {best_test_rmse:.4f}")
-                    # logging.info(f"[test {iter_idx}/{iteration}-iter] rmse : {best_test_rmse:.4f}")
+                    log += f" | [test] rmse : {best_test_rmse:.4f}"
 
                     torch.save(model, './model.pt')
 
@@ -125,15 +122,18 @@ class Trainer:
                         logging.info("Early stopping threshold reached. Stop training.")
                         break
                     if no_better_valid > lr_intialize_step:
-                        new_lr = max(learning_rate * lr_decay, train_min_lr)
-                        if new_lr < learning_rate:
-                            learning_rate = new_lr
+                        new_lr = max(lr * lr_decay, train_min_lr)
+                        if new_lr < lr:
+                            lr = new_lr
                             logging.info("\tChange the LR to %g" % new_lr)
                             for p in optimizer.param_groups:
-                                p['lr'] = learning_rate
+                                p['lr'] = lr
                             no_better_valid = 0
 
-        logging.info('[END] Best Iter : {best_iter} Best Valid RMSE : {best_valid_rmse:.4f}, Best Test RMSE : {best_test_rmse:.4f}')
+            if iter_idx and iter_idx  % log_interval == 0:
+                print(log)
+
+        print(f'[END] Best Iter : {best_iter} Best Valid RMSE : {best_valid_rmse:.4f}, Best Test RMSE : {best_test_rmse:.4f}')
 
     def evaluate(self, model, dataset, possible_edge_types, data_type = 'valid'):
         if data_type == "valid":
@@ -156,4 +156,8 @@ class Trainer:
         return rmse
 
 if __name__ == '__main__':
+    np.random.seed(123)
+    torch.manual_seed(123)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(123)
     fire.Fire(Trainer)
