@@ -49,8 +49,14 @@ class GCMC(nn.Module):
                                         n_classes = len(edge_types),
                                         n_basis = n_basis)
 
-    def forward(self, enc_graph, dec_graph, ufeats, ifeats):
-        ufeats, ifeats = self.encoder(enc_graph, ufeats, ifeats)
-        pred_edge_types = self.decoder(dec_graph, ufeats, ifeats)
+    def forward(self,
+                enc_graph,
+                dec_graph,
+                ufeats,
+                ifeats,
+                ukey = 'user',
+                ikey = 'item'):
+        ufeats, ifeats = self.encoder(enc_graph, ufeats, ifeats, ukey, ikey)
+        pred_edge_types = self.decoder(dec_graph, ufeats, ifeats, ukey, ikey)
 
         return pred_edge_types
