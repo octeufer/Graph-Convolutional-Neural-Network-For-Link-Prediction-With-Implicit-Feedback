@@ -50,7 +50,7 @@ class BilinearDecoder(nn.Module):
         Paramters
         ---------
         graph : dgl.homograph
-            item -> user graph
+            item -> user graph or user -> item graph
         ufeats, ifeats : torch.FloatTensor
 
         Returns
@@ -60,12 +60,12 @@ class BilinearDecoder(nn.Module):
         """
 
         with graph.local_scope():
-            graph.nodes[ikey].data['hi'] = ifeats
+            graph.nodes[ikey].data['h'] = ifeats
 
             pred_scores = []
             for P_r in self.P_r:
-                graph.nodes[ukey].data['hu'] = P_r(ufeats)
-                graph.apply_edges(fn.u_dot_v('hi', 'hu', 'r'))
+                graph.nodes[ukey].data['h'] = P_r(ufeats)
+                graph.apply_edges(fn.u_dot_v('h', 'h', 'r'))
 
                 pred = graph.edata['r']
                 pred_scores.append(pred)
