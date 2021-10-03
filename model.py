@@ -42,9 +42,9 @@ class GCMC(nn.Module):
         n_basis : int
             number of basis ( <= n_classes )
         """
-        self.encdoers = nn.ModuleList()
+        self.encoders = nn.ModuleList()
         for _ in range(n_layers):
-            self.encdoers.append(GCMCLayer(edge_types = edge_types,
+            self.encoders.append(GCMCLayer(edge_types = edge_types,
                                             user_feats_dim = user_feats_dim,
                                             item_feats_dim = item_feats_dim,
                                             out_feats_dim = hidden_feats_dim,
@@ -96,7 +96,7 @@ class GCMC(nn.Module):
             logits_{i, j, r} = ufeats_{i} @ Q_r @ ifeats_{j}
         """
 
-        for encoder in self.encdoers:
+        for encoder in self.encoders:
             ufeats, ifeats = encoder(enc_graph, ufeats, ifeats, ukey, ikey)
 
         ufeats = self.activation_out(self.linear_user(ufeats))
