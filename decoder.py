@@ -29,13 +29,15 @@ class BilinearDecoder(nn.Module):
         else:
             score_{i, j, s} = ufeats_{i} @ P_s @ ifeats_{j} where s <= r
             logits_{i, j, r} = a_{r, s = 1} * score_{i, j, s = 1} + ...
+            
+            Q_{r} = \sum_{s = 1} a_{r,s} * P_{s}
         """
         if n_basis is not None:
             # weight sharing
-            self.weighted_sum = nn.Linear(n_basis, n_classes)
+            self.to_Q_r = nn.Linear(n_basis, n_classes)
         else:
             n_basis = n_classes
-            self.weighted_sum = nn.Identity()
+            self.to_Q_r = nn.Identity()
 
         self.P_r = nn.ModuleList()
         for _ in range(n_basis):
@@ -70,7 +72,7 @@ class BilinearDecoder(nn.Module):
                 pred = graph.edata['r']
                 pred_scores.append(pred)
 
-            pred_edge_types = self.weighted_sum(torch.cat(pred_scores, dim = -1))
+            pred_edge_types = self.to_Q_r(torch.cat(pred_scores, dim = -1))
 
         return pred_edge_types
 
