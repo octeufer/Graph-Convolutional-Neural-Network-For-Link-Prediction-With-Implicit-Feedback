@@ -35,6 +35,7 @@ class BilinearDecoder(nn.Module):
         if n_basis is not None:
             # weight sharing
             self.to_Q_r = nn.Linear(n_basis, n_classes)
+            torch.nn.init.xavier_normal_(self.to_Q_r.weight)
         else:
             n_basis = n_classes
             self.to_Q_r = nn.Identity()
