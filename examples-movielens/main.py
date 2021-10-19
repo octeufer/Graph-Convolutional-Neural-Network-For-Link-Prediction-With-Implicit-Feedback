@@ -98,7 +98,8 @@ class Trainer:
 
             # pred_{i,j} = \sum_{r = 1} r * P(link_{i,j} = r)
             pred_ratings = (torch.softmax(logits, dim=1) * possible_edge_types).sum(dim=1)
-            rmse = ((pred_ratings - train_gt_ratings) ** 2).sum()
+            mse = ((pred_ratings - train_gt_ratings) ** 2).sum()
+            rmse = mse.pow(1/2)
             count_rmse += rmse.item()
             count_num += pred_ratings.shape[0]
 
@@ -153,8 +154,8 @@ class Trainer:
             logits = model(enc_graph, dec_graph,
                             dataset.user_feature, dataset.movie_feature)
             pred_ratings = (torch.softmax(logits, dim=1) * possible_edge_types).sum(dim=1)
-            rmse = ((pred_ratings - rating_values) ** 2.).mean().item()
-            rmse = np.sqrt(rmse)
+            mse = ((pred_ratings - rating_values) ** 2.).mean().item()
+            rmse = np.sqrt(mse)
             
         return rmse
 
