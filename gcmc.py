@@ -82,7 +82,7 @@ class GCMCConv(nn.Module):
 class GCMCLayer(nn.Module):
     def __init__(self,
                 edge_types,
-                user_feats_dim,
+                customer_feats_dim,
                 item_feats_dim,
                 out_feats_dim,
                 agg = 'sum',
@@ -93,8 +93,8 @@ class GCMCLayer(nn.Module):
 
         edge_types : list
             all edge types
-        user_feats_dim : int
-            dimension of user features
+        customer_feats_dim : int
+            dimension of customer features
         item_feats_dim : int
             dimension of item features
         out_feats_dim : int
@@ -117,16 +117,16 @@ class GCMCLayer(nn.Module):
 
         conv = {}
         for edge in edge_types:
-            user_to_item_key = f'{edge}'
-            item_to_user_key = f'reverse-{edge}'
+            customer_to_item_key = f'{edge}'
+            item_to_customer_key = f'reverse-{edge}'
 
-            # convolution on user -> item graph
-            conv[user_to_item_key] = GCMCConv(in_feats_dim = user_feats_dim,
+            # convolution on customer -> item graph
+            conv[customer_to_item_key] = GCMCConv(in_feats_dim = customer_feats_dim,
                                             out_feats_dim = self.message_dim,
                                             drop_out = drop_out)
             
-            # convolution on item -> user graph
-            conv[item_to_user_key] = GCMCConv(in_feats_dim = item_feats_dim,
+            # convolution on item -> customer graph
+            conv[item_to_customer_key] = GCMCConv(in_feats_dim = item_feats_dim,
                                             out_feats_dim = self.message_dim,
                                             drop_out = drop_out)
 
@@ -137,15 +137,15 @@ class GCMCLayer(nn.Module):
     def flatten(self, feats):
         """
         if agg == 'stack':
-            conv out : (n_users, n_edges, message_feats_dim)
-            returns : (n_users, n_edges * message_feats_dim) i.e. (n_users, out_feats_dim)
+            conv out : (n_customers, n_edges, message_feats_dim)
+            returns : (n_customers, n_edges * message_feats_dim) i.e. (n_customers, out_feats_dim)
         else:
-            conv out : (n_users, out_feats_dim)
-            returns : (n_users, out_feats_dim)
+            conv out : (n_customers, out_feats_dim)
+            returns : (n_customers, out_feats_dim)
         """
         return feats.contiguous().view(-1, self.out_feats_dim)
 
-    def forward(self, graph, ufeats, ifeats, ukey = 'user', ikey = 'item'):
+    def forward(self, graph, ufeats, ifeats, ukey = 'customer', ikey = 'item'):
         """
         Paramters
         ---------
@@ -187,24 +187,24 @@ if __name__ == '__main__':
     from utils import add_degree
 
     ratings = [1, 2, 3, 4, 5, 6]
-    users = torch.tensor([0,0,0,1,1,2,3,4,4,4,2,2]).chunk(len(ratings))
+    customers = torch.tensor([0,0,0,1,1,2,3,4,4,4,2,2]).chunk(len(ratings))
     items = torch.tensor([0,3,5,1,2,4,5,6,0,1,3,5]).chunk(len(ratings))
 
     graph_data = {}
     for i in range(len(ratings)):
-        graph_data[('user', f'{i+1}', 'item')] = (users[i], items[i])
-        graph_data[('item', f'reverse-{i+1}', 'user')] = (items[i], users[i])
+        graph_data[('customer', f'{i+1}', 'item')] = (customers[i], items[i])
+        graph_data[('item', f'reverse-{i+1}', 'customer')] = (items[i], customers[i])
 
     g = dgl.heterograph(graph_data)
     add_degree(graph = g, edge_types = ratings)
 
-    n_users, n_items = 5, 7
+    n_customers, n_items = 5, 7
     ufeats_dim, ifeats_dim = 16, 32
-    ufeats = torch.rand(n_users, ufeats_dim)
+    ufeats = torch.rand(n_customers, ufeats_dim)
     ifeats = torch.rand(n_items, ifeats_dim)
 
     model = GCMCLayer(edge_types = ratings,
-                        user_feats_dim = ufeats_dim,
+                        customer_feats_dim = ufeats_dim,
                         item_feats_dim = ifeats_dim,
                         out_feats_dim = 24,
                         agg = 'sum',
@@ -212,5 +212,5 @@ if __name__ == '__main__':
                         activation = 'relu')
 
     ufeats, ifeats = model(g, ufeats, ifeats)
-    print(ufeats.shape) # (n_users, out_feats_dim)
+    print(ufeats.shape) # (n_customers, out_feats_dim)
     print(ifeats.shape) # (n_items, out_feats_dim)

@@ -48,18 +48,18 @@ class BilinearDecoder(nn.Module):
         for p_r in self.P_r:
             torch.nn.init.xavier_uniform_(p_r.weight)
 
-    def forward(self, graph, ufeats, ifeats, ukey = 'user', ikey = 'item'):
+    def forward(self, graph, ufeats, ifeats, ukey = 'customer', ikey = 'item'):
         """
         Paramters
         ---------
         graph : dgl.homograph
-            item -> user graph or user -> item graph
+            item -> customer graph or customer -> item graph
         ufeats, ifeats : torch.FloatTensor
 
         Returns
         -------
         pred_edge_types : torch.FloatTensor
-            shape : (n_users, n_classes)
+            shape : (n_customers, n_classes)
         """
 
         with graph.local_scope():
@@ -79,17 +79,17 @@ class BilinearDecoder(nn.Module):
 
 if __name__ == '__main__':
     n_ratings = 6
-    n_users, n_items = 5, 7
-    users = torch.tensor([0,0,0, 1,1, 2, 3, 4,4,4,4,4])
+    n_customers, n_items = 5, 7
+    customers = torch.tensor([0,0,0, 1,1, 2, 3, 4,4,4,4,4])
     items = torch.tensor([0,3,5, 1,2, 4, 5, 0,1,3,5,6])
     
     # GAE output features
     output_feats_dim = 16
-    ufeats = torch.rand(n_users, output_feats_dim)
+    ufeats = torch.rand(n_customers, output_feats_dim)
     ifeats = torch.rand(n_items, output_feats_dim)
 
     dec_graph_data = {
-        ('item', 'reverse-rating', 'user') : (items, users)
+        ('item', 'reverse-rating', 'customer') : (items, customers)
         }
     dec_g = dgl.heterograph(dec_graph_data)
 

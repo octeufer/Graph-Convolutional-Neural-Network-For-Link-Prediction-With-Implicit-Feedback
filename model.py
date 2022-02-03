@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+import torch.nn.functional as F
+
 from gcmc import GCMCLayer
 from decoder import BilinearDecoder
 
@@ -11,7 +13,7 @@ class GCMC(nn.Module):
     def __init__(self,
                 n_layers,
                 edge_types,
-                user_feats_dim,
+                customer_feats_dim,
                 item_feats_dim,
                 hidden_feats_dim,
                 out_feats_dim,
@@ -27,8 +29,8 @@ class GCMC(nn.Module):
             number of GCMC layers
         edge_types : list
             all edge types
-        user_feats_dim : int
-            dimension of user features
+        customer_feats_dim : int
+            dimension of customer features
         item_feats_dim : int
             dimension of item features
         hidden_feats_dim : int
@@ -45,15 +47,15 @@ class GCMC(nn.Module):
         self.encoders = nn.ModuleList()
         for _ in range(n_layers):
             self.encoders.append(GCMCLayer(edge_types = edge_types,
-                                            user_feats_dim = user_feats_dim,
+                                            customer_feats_dim = customer_feats_dim,
                                             item_feats_dim = item_feats_dim,
                                             out_feats_dim = hidden_feats_dim,
                                             agg = agg,
                                             drop_out = drop_out,
                                             activation = activation))
-            user_feats_dim, item_feats_dim = hidden_feats_dim, hidden_feats_dim
+            customer_feats_dim, item_feats_dim = hidden_feats_dim, hidden_feats_dim
 
-        self.linear_user = nn.Linear(hidden_feats_dim, out_feats_dim)
+        self.linear_customer = nn.Linear(hidden_feats_dim, out_feats_dim)
         self.linear_item = nn.Linear(hidden_feats_dim, out_feats_dim)
         self.activation_out = activation_map[activation]
             
@@ -64,7 +66,7 @@ class GCMC(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        torch.nn.init.xavier_uniform_(self.linear_user.weight)
+        torch.nn.init.xavier_uniform_(self.linear_customer.weight)
         torch.nn.init.xavier_uniform_(self.linear_item.weight)
 
     def forward(self,
@@ -72,7 +74,7 @@ class GCMC(nn.Module):
                 dec_graph,
                 ufeats,
                 ifeats,
-                ukey = 'user',
+                ukey = 'customer',
                 ikey = 'item'):
         """
         Parameters
@@ -89,7 +91,7 @@ class GCMC(nn.Module):
                 h_{i} = \sigma( aggregate( MP_{i} ) )
 
         2. final features
-            user_{i} = \sigma( W_u * h_{i} )
+            customer_{i} = \sigma( W_u * h_{i} )
             item_{j} = \sigma( W_v * h_{j} )
 
         3. Bilinear decoder
@@ -99,9 +101,34 @@ class GCMC(nn.Module):
         for encoder in self.encoders:
             ufeats, ifeats = encoder(enc_graph, ufeats, ifeats, ukey, ikey)
 
-        ufeats = self.activation_out(self.linear_user(ufeats))
+        ufeats = self.activation_out(self.linear_customer(ufeats))
         ifeats = self.activation_out(self.linear_item(ifeats))
 
         pred_edge_types = self.decoder(dec_graph, ufeats, ifeats, ukey, ikey)
 
         return pred_edge_types
+
+
+class MLP(nn.Module):
+    def __init__(self,
+                n_layers,
+                customer_feats_dim,
+                item_feats_dim,
+                hidden_feats_dim,
+                n_basis):
+        super().__init__()
+
+        self.n_layers = n_layers
+        self.input = nn.Linear(customer_feats_dim + item_feats_dim, hidden_feats_dim)
+        self.hidden = nn.ModuleList([nn.Linear(hidden_feats_dim, hidden_feats_dim) for _ in range(n_layers-1)])
+        self.output = nn.Linear(hidden_feats_dim, n_basis)
+        self.act = nn.ELU(inplace=True)
+    
+    def forward(self,
+                ufeats,
+                ifeats):
+        z = self.act(self.input(torch.cat((ufeats,ifeats),dim=1)))
+        for i in range(self.n_layers-1):
+            z = self.act(self.hidden[i](z))
+        out = self.act(self.output(z))
+        return out
