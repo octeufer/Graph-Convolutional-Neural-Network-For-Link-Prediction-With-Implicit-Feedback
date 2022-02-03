@@ -8,6 +8,7 @@ import fire
 import logging
 
 import numpy as np
+import pandas as pd
 
 import torch
 import torch.nn as nn
@@ -154,7 +155,7 @@ class Trainer:
         print(f'[END] Best Iter : {best_iter} Best Valid AUC : {best_valid_auc:.4f}, Best Valid Precision : {best_valid_precision:.4f}, \
             Best Valid Recall : {best_valid_recall:.4f}, \r\n Best Test AUC : {best_test_auc:.4f}, Best Test Precision : {best_test_precision:.4f}, Best Test Recall : {best_test_recall:.4f}')
 
-    def evaluate(self, model, dataset, possible_edge_types, data_type = 'valid'):
+    def evaluate(self, model, dataset, possible_edge_types, data_type = 'pred_test'):
         if data_type == "valid":
             rating_values = dataset.valid_truths
             enc_graph = dataset.valid_enc_graph
@@ -163,6 +164,18 @@ class Trainer:
             rating_values = dataset.test_truths
             enc_graph = dataset.test_enc_graph
             dec_graph = dataset.test_dec_graph
+        elif data_type == "pred_test":
+            enc_graph = dataset.pred_test_enc_graph
+            dec_graph = dataset.pred_test_dec_graph
+
+            model.eval()
+            with torch.no_grad():
+                logits = model(enc_graph, dec_graph,
+                                dataset.user_feature, dataset.movie_feature)
+                pred_ratings = (torch.softmax(logits, dim=1) * possible_edge_types).sum(dim=1)
+                pred_out = dataset.all_pred_test_info[['customerId', 'productId']]
+                pred_out['purchase_probs'] = pred_ratings.detach().cpu().numpy().tolist()
+                pred_out.to_csv('testpred.csv', header=True, index=False)
 
         labels_cpu = rating_values.detach().cpu().numpy()
 

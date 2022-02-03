@@ -598,6 +598,11 @@ class ASOS(object):
         all_train_info = pd.read_csv(os.path.join(self._dir, 'trainset_sample.csv'), sep=',', header=None,
                                     names=col_names, engine='python')
 
+        col_names_test = ['customerId', 'productId', 'isFemale', 'country', 'yearOfBirth', \
+            'isPremier', 'brand', 'price', 'productType', 'onSale', 'dateOnSite']
+        all_pred_test_info = pd.read_csv(os.path.join(self._dir, 'testset_sample.csv'), sep=',', header=None,
+                                    names=col_names_test, engine='python')
+
         # self._load_raw_user_info()
         # self._load_raw_movie_info()
         self.user_info = all_train_info[['customerId', 'isFemale', 'country', 'yearOfBirth', 'isPremier']].drop_duplicates()
@@ -622,6 +627,8 @@ class ASOS(object):
         self.test_rating_info = self.all_rating_info.iloc[shuffled_idx[:num_test]]
         self.all_train_rating_info = self.all_rating_info.iloc[shuffled_idx[num_test: ]]
 
+        self.pred_rating = all_pred_test_info[['customerId', 'productId']]
+
         print('......')
         num_valid = int(np.ceil(self.all_train_rating_info.shape[0] * self._valid_ratio))
         shuffled_idx = np.random.permutation(self.all_train_rating_info.shape[0])
@@ -634,6 +641,7 @@ class ASOS(object):
         print("\t\tTrain rating pairs : {}".format(self.train_rating_info.shape[0]))
         print("\t\tValid rating pairs : {}".format(self.valid_rating_info.shape[0]))
         print("\tTest rating pairs  : {}".format(self.test_rating_info.shape[0]))
+        print("\tpred Test rating pairs  : {}".format(self.pred_rating.shape[0]))
 
         # self.user_info = self._drop_unseen_nodes(orign_info=self.user_info,
         #                                          cmp_col_name="id",
@@ -680,6 +688,7 @@ class ASOS(object):
         train_rating_pairs, train_rating_values = self._generate_pair_value(self.train_rating_info)
         valid_rating_pairs, valid_rating_values = self._generate_pair_value(self.valid_rating_info)
         test_rating_pairs, test_rating_values = self._generate_pair_value(self.test_rating_info)
+        pred_test_pairs = self._generate_pair_value_pred(self.pred_rating)
 
         def _make_labels(ratings):
             labels = th.LongTensor(np.searchsorted(self.possible_rating_values, ratings)).to(device)
@@ -699,6 +708,9 @@ class ASOS(object):
         self.test_dec_graph = self._generate_dec_graph(test_rating_pairs)
         self.test_labels = _make_labels(test_rating_values)
         self.test_truths = th.FloatTensor(test_rating_values).to(device)
+
+        self.pred_test_enc_graph = self._generate_enc_graph(all_train_rating_pairs, all_train_rating_values, add_support=True)
+        self.pred_test_dec_graph = self._generate_dec_graph(pred_test_pairs)
 
         def _npairs(graph):
             rst = 0
@@ -733,6 +745,14 @@ class ASOS(object):
                                  dtype=np.int64))
         rating_values = rating_info["purchased"].values.astype(np.float32)
         return rating_pairs, rating_values
+    
+    def _generate_pair_value_pred(self, rating_info):
+        rating_pairs = (np.array([self.global_user_id_map[ele] for ele in rating_info["customerId"]],
+                                 dtype=np.int64),
+                        np.array([self.global_movie_id_map[ele] for ele in rating_info["productId"]],
+                                 dtype=np.int64))
+        # rating_values = rating_info["purchased"].values.astype(np.float32)
+        return rating_pairs
 
     def _generate_enc_graph(self, rating_pairs, rating_values, add_support=False):
         user_movie_R = np.zeros((self._num_user, self._num_movie), dtype=np.float32)
