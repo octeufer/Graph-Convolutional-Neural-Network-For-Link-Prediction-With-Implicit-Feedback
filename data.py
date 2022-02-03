@@ -600,7 +600,7 @@ class ASOS(object):
 
         col_names_test = ['customerId', 'productId', 'isFemale', 'country', 'yearOfBirth', \
             'isPremier', 'brand', 'price', 'productType', 'onSale', 'dateOnSite']
-        all_pred_test_info = pd.read_csv(os.path.join(self._dir, 'testset_sample.csv'), sep=',', header=None,
+        self.all_pred_test_info = pd.read_csv(os.path.join(self._dir, 'testset_sample.csv'), sep=',', header=None,
                                     names=col_names_test, engine='python')
 
         # self._load_raw_user_info()
@@ -627,7 +627,7 @@ class ASOS(object):
         self.test_rating_info = self.all_rating_info.iloc[shuffled_idx[:num_test]]
         self.all_train_rating_info = self.all_rating_info.iloc[shuffled_idx[num_test: ]]
 
-        self.pred_rating = all_pred_test_info[['customerId', 'productId']]
+        self.pred_rating = self.all_pred_test_info[['customerId', 'productId']]
 
         print('......')
         num_valid = int(np.ceil(self.all_train_rating_info.shape[0] * self._valid_ratio))
@@ -737,6 +737,52 @@ class ASOS(object):
         print("Test dec graph: \t#user:{}\t#movie:{}\t#pairs:{}".format(
             self.test_dec_graph.number_of_nodes('user'), self.test_dec_graph.number_of_nodes('item'),
             self.test_dec_graph.number_of_edges()))
+        print("Pred enc graph: \t#user:{}\t#movie:{}\t#pairs:{}".format(
+            self.pred_test_enc_graph.number_of_nodes('user'), self.pred_test_enc_graph.number_of_nodes('item'),
+            _npairs(self.pred_test_enc_graph)))
+        print("Pred dec graph: \t#user:{}\t#movie:{}\t#pairs:{}".format(
+            self.pred_test_dec_graph.number_of_nodes('user'), self.pred_test_dec_graph.number_of_nodes('item'),
+            self.pred_test_dec_graph.number_of_edges()))
+
+    def _update_global_idmap(self):
+        # self.global_user_id_map = {ele: i for i, ele in enumerate(self.user_info['customerId'])}
+        # self.global_movie_id_map = {ele: i for i, ele in enumerate(self.movie_info['productId'])}
+        # print('Total user number = {}, movie number = {}'.format(len(self.global_user_id_map),
+        #                                                          len(self.global_movie_id_map)))
+        # self._num_user = len(self.global_user_id_map)
+        # self._num_movie = len(self.global_movie_id_map)
+
+        for ele in self.pred_rating['customerId'].unique():
+            if ele not in self.global_user_id_map:
+                self.global_user_id_map.update({ele: self._num_user})
+                self._num_user += 1
+        for ele in self.pred_rating['productId'].unique():
+            if ele not in self.global_movie_id_map:
+                self.global_movie_id_map.update({ele: self._num_movie})
+                self._num_movie += 1
+        
+        add_user_info = self.all_pred_test_info[['customerId', 'isFemale', 'country', 'yearOfBirth', 'isPremier']].drop_duplicates()
+        add_movie_info = self.all_pred_test_info[['productId', 'brand', 'price', 'productType', 'onSale', 'dateOnSite']].drop_duplicates()
+
+        self.user_info = self.user_info.append(add_user_info, ignore_index=True).drop_duplicates()
+        self.movie_info = self.movie_info.append(add_movie_info, ignore_index=True).drop_duplicates()
+
+        ### Generate features
+        self.user_feature = th.FloatTensor(self._process_user_fea()).to(self._device)
+        self.movie_feature = th.FloatTensor(self._process_movie_fea()).to(self._device)
+
+        if self.user_feature is None:
+            self.user_feature_shape = (self.num_user, self.num_user)
+            self.movie_feature_shape = (self.num_movie, self.num_movie)
+        else:
+            self.user_feature_shape = self.user_feature.shape
+            self.movie_feature_shape = self.movie_feature.shape
+        info_line = "Add Feature dim: "
+        info_line += "\nuser: {}".format(self.user_feature_shape)
+        info_line += "\nmovie: {}".format(self.movie_feature_shape)
+        print(info_line)
+
+        return 
 
     def _generate_pair_value(self, rating_info):
         rating_pairs = (np.array([self.global_user_id_map[ele] for ele in rating_info["customerId"]],
@@ -747,6 +793,7 @@ class ASOS(object):
         return rating_pairs, rating_values
     
     def _generate_pair_value_pred(self, rating_info):
+        self._update_global_idmap()
         rating_pairs = (np.array([self.global_user_id_map[ele] for ele in rating_info["customerId"]],
                                  dtype=np.int64),
                         np.array([self.global_movie_id_map[ele] for ele in rating_info["productId"]],

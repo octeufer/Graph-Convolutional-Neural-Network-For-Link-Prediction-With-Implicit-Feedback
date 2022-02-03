@@ -45,11 +45,22 @@ class Trainer:
             log_interval = 1,
             early_stopping = 100,
             lr_intialize_step = 50,
-            lr_decay = 0.5,
+            lr_decay = 0.9,
             train_min_lr = 0.001
             ):
 
+        
+        def loging(logfile,str_in):
+            """ Log a string in a file """
+            with open(logfile,'a') as f:
+                f.write(str_in+'\n')
+            print(str_in)
+
         logging.basicConfig(filename='./train.log')
+        logfile = './log.txt'
+        f = open(logfile,'w')
+        loging(logfile, ("training start: n_layers = %d, hidden_feats_dim = %d, out_feats_dim = %d \
+            agg = %s, drop_out = %f, activation = %s, n_basis = %d, lr = %f, iteration = %d" % (1, 500, 75, 'stack', 0.7, 'leaky', 2, 0.01, 2000)))
 
         model = GCMC(n_layers = n_layers,
                     edge_types = self.dataset.possible_rating_values,
@@ -62,6 +73,7 @@ class Trainer:
                     activation = activation,
                     n_basis = n_basis)
         print(model)
+        loging(logfile, ("model: %s" % str(model)))
 
         device = self.dataset._device
         model = model.to(device)
@@ -91,8 +103,11 @@ class Trainer:
         self.dataset.valid_dec_graph = self.dataset.valid_dec_graph.int().to(device)
         self.dataset.test_enc_graph = self.dataset.test_enc_graph.int().to(device)
         self.dataset.test_dec_graph = self.dataset.test_dec_graph.int().to(device)
+        self.dataset.pred_test_enc_graph = self.dataset.pred_test_enc_graph.int().to(device)
+        self.dataset.pred_test_dec_graph = self.dataset.pred_test_dec_graph.int().to(device)
 
         print(f"Start training on {device}...")
+        loging(logfile, ("Start training on: %s" % str(device)))
         for iter_idx in range(iteration):
             model.train()
             logits = model(self.dataset.train_enc_graph, self.dataset.train_dec_graph,
@@ -133,6 +148,8 @@ class Trainer:
                     best_test_auc, best_test_precision, best_test_recall = self.evaluate(model, self.dataset, possible_edge_types, data_type = 'test')
                     log += f" | [test] precision : {best_test_precision:.4f}, auc : {best_test_auc:.4f}, recall : {best_test_recall:.4f}"
 
+                    self.evaluate(model, self.dataset, possible_edge_types, data_type = 'pred_test')
+
                     torch.save(model, './model.pt')
 
                 else:
@@ -151,9 +168,13 @@ class Trainer:
 
             if iter_idx and iter_idx  % log_interval == 0:
                 print(log)
+                loging(logfile, (log))
 
         print(f'[END] Best Iter : {best_iter} Best Valid AUC : {best_valid_auc:.4f}, Best Valid Precision : {best_valid_precision:.4f}, \
             Best Valid Recall : {best_valid_recall:.4f}, \r\n Best Test AUC : {best_test_auc:.4f}, Best Test Precision : {best_test_precision:.4f}, Best Test Recall : {best_test_recall:.4f}')
+        loging(logfile, (f'[END] Best Iter : {best_iter} Best Valid AUC : {best_valid_auc:.4f}, Best Valid Precision : {best_valid_precision:.4f}, \
+            Best Valid Recall : {best_valid_recall:.4f}, \r\n Best Test AUC : {best_test_auc:.4f}, Best Test Precision : {best_test_precision:.4f}, Best Test Recall : {best_test_recall:.4f}'))
+        f.close()
 
     def evaluate(self, model, dataset, possible_edge_types, data_type = 'pred_test'):
         if data_type == "valid":
@@ -175,7 +196,8 @@ class Trainer:
                 pred_ratings = (torch.softmax(logits, dim=1) * possible_edge_types).sum(dim=1)
                 pred_out = dataset.all_pred_test_info[['customerId', 'productId']]
                 pred_out['purchase_probs'] = pred_ratings.detach().cpu().numpy().tolist()
-                pred_out.to_csv('testpred.csv', header=True, index=False)
+                pred_out.to_csv(os.path.join('C:\Workspace\ASOS_TechTest', 'testpred.csv'), header=True, index=False)
+            return 
 
         labels_cpu = rating_values.detach().cpu().numpy()
 
