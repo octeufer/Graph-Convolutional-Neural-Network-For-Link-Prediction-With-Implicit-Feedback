@@ -1,3 +1,4 @@
+from copy import deepcopy
 import sys
 sys.path.append('..')
 
@@ -15,6 +16,7 @@ import torch.optim as optim
 from model import GCMC
 from data import MovieLens, ASOS
 
+import sklearn.metrics as metrics
 
 class Trainer:
     def __init__(self,
@@ -70,7 +72,12 @@ class Trainer:
         train_gt_labels = self.dataset.train_labels
         train_gt_ratings = self.dataset.train_truths
 
-        best_valid_rmse = np.inf
+        labels_cpu = deepcopy(train_gt_labels.data)
+        labels_cpu = labels_cpu.detach().cpu().numpy()
+
+        best_valid_auc = 0
+        best_valid_precision = 0
+        best_valid_recall = 0
         no_better_valid = 0
         best_iter = -1
         count_rmse = 0
@@ -98,25 +105,32 @@ class Trainer:
 
             # pred_{i,j} = \sum_{r = 1} r * P(link_{i,j} = r)
             pred_ratings = (torch.softmax(logits, dim=1) * possible_edge_types).sum(dim=1)
-            mse = ((pred_ratings - train_gt_ratings) ** 2).sum()
-            rmse = mse.pow(1/2)
-            count_rmse += rmse.item()
-            count_num += pred_ratings.shape[0]
+            
+            # mse = ((pred_ratings - train_gt_ratings) ** 2).sum()
+            # rmse = mse.pow(1/2)
+            # count_rmse += rmse.item()
+            # count_num += pred_ratings.shape[0]
+            
+            auc = metrics.roc_auc_score(labels_cpu,pred_ratings.detach().cpu().numpy())
+            precision = metrics.precision_score(labels_cpu, ((pred_ratings>0.5)*1).detach().cpu().numpy())
+            recall = metrics.recall_score(labels_cpu, ((pred_ratings>0.5)*1).detach().cpu().numpy())
 
             if iter_idx and iter_idx % log_interval == 0:
-                log = f"[{iter_idx}/{iteration}-iter] | [train] loss : {count_loss/iter_idx:.4f}, rmse : {count_rmse/count_num:.4f}"
+                log = f"[{iter_idx}/{iteration}-iter] | [train] loss : {count_loss/iter_idx:.4f}, precision : {precision:.4f}, auc : {auc:.4f}, recall : {recall:.4f}"
                 count_rmse, count_num = 0, 0
 
             if iter_idx and iter_idx % (log_interval*10) == 0:
-                valid_rmse = self.evaluate(model, self.dataset, possible_edge_types, data_type = 'valid')
-                log += f" | [valid] rmse : {valid_rmse:.4f}"
+                valid_auc, valid_precision, valid_recall = self.evaluate(model, self.dataset, possible_edge_types, data_type = 'valid')
+                log += f" | [valid] precision : {valid_precision:.4f}, auc : {valid_auc:.4f}, recall : {valid_recall:.4f}"
 
-                if valid_rmse < best_valid_rmse:
-                    best_valid_rmse = valid_rmse
+                if valid_auc > best_valid_auc:
+                    best_valid_auc = valid_auc
+                    best_valid_precision = valid_precision
+                    best_valid_recall = valid_recall
                     no_better_valid = 0
                     best_iter = iter_idx
-                    best_test_rmse = self.evaluate(model, self.dataset, possible_edge_types, data_type = 'test')
-                    log += f" | [test] rmse : {best_test_rmse:.4f}"
+                    best_test_auc, best_test_precision, best_test_recall = self.evaluate(model, self.dataset, possible_edge_types, data_type = 'test')
+                    log += f" | [test] precision : {best_test_precision:.4f}, auc : {best_test_auc:.4f}, recall : {best_test_recall:.4f}"
 
                     torch.save(model, './model.pt')
 
@@ -137,7 +151,8 @@ class Trainer:
             if iter_idx and iter_idx  % log_interval == 0:
                 print(log)
 
-        print(f'[END] Best Iter : {best_iter} Best Valid RMSE : {best_valid_rmse:.4f}, Best Test RMSE : {best_test_rmse:.4f}')
+        print(f'[END] Best Iter : {best_iter} Best Valid AUC : {best_valid_auc:.4f}, Best Valid Precision : {best_valid_precision:.4f}, \
+            Best Valid Recall : {best_valid_recall:.4f}, \r\n Best Test AUC : {best_test_auc:.4f}, Best Test Precision : {best_test_precision:.4f}, Best Test Recall : {best_test_recall:.4f}')
 
     def evaluate(self, model, dataset, possible_edge_types, data_type = 'valid'):
         if data_type == "valid":
@@ -149,15 +164,21 @@ class Trainer:
             enc_graph = dataset.test_enc_graph
             dec_graph = dataset.test_dec_graph
 
+        labels_cpu = rating_values.detach().cpu().numpy()
+
         model.eval()
         with torch.no_grad():
             logits = model(enc_graph, dec_graph,
                             dataset.user_feature, dataset.movie_feature)
             pred_ratings = (torch.softmax(logits, dim=1) * possible_edge_types).sum(dim=1)
-            mse = ((pred_ratings - rating_values) ** 2.).mean().item()
-            rmse = np.sqrt(mse)
+            # mse = ((pred_ratings - rating_values) ** 2.).mean().item()
+            # rmse = np.sqrt(mse)
+
+            auc = metrics.roc_auc_score(labels_cpu,pred_ratings.detach().cpu().numpy())
+            precision = metrics.precision_score(labels_cpu, ((pred_ratings>0.5)*1).detach().cpu().numpy())
+            recall = metrics.recall_score(labels_cpu, ((pred_ratings>0.5)*1).detach().cpu().numpy())
             
-        return rmse
+        return auc, precision, recall
 
 if __name__ == '__main__':
     np.random.seed(123)
