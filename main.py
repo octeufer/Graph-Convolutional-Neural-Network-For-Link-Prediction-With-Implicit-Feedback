@@ -19,6 +19,12 @@ from data import ASOS
 
 import sklearn.metrics as metrics
 
+def loging(logfile,str_in):
+    """ Log a string in a file """
+    with open(logfile,'a') as f:
+        f.write(str_in+'\n')
+    print(str_in)
+
 class Trainer:
     def __init__(self,
                 data_name = 'ASOS',
@@ -26,16 +32,18 @@ class Trainer:
                 test_ratio = 0.1
                 ):
 
+        self.logfile = './log.txt'
+        f = open(self.logfile,'w')
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.dataset = ASOS(name = data_name,
                                 test_ratio = test_ratio,
                                 valid_ratio = valid_ratio,
-                                device = device)
+                                device = device, logfile=self.logfile)
 
     def train(self,
             n_layers = 1,
-            hidden_feats_dim = 500,
-            out_feats_dim = 75,
+            hidden_feats_dim = 50,
+            out_feats_dim = 20,
             agg = 'stack',
             drop_out = 0.7,
             activation = 'leaky',
@@ -49,17 +57,9 @@ class Trainer:
             train_min_lr = 0.001
             ):
 
-        
-        def loging(logfile,str_in):
-            """ Log a string in a file """
-            with open(logfile,'a') as f:
-                f.write(str_in+'\n')
-            print(str_in)
-
         logging.basicConfig(filename='./train.log')
-        logfile = './log.txt'
-        f = open(logfile,'w')
-        loging(logfile, ("training start: n_layers = %d, hidden_feats_dim = %d, out_feats_dim = %d \
+        
+        loging(self.logfile, ("training start: n_layers = %d, hidden_feats_dim = %d, out_feats_dim = %d \
             agg = %s, drop_out = %f, activation = %s, n_basis = %d, lr = %f, iteration = %d" % (1, 500, 75, 'stack', 0.7, 'leaky', 2, 0.01, 2000)))
 
         model = GCMC(n_layers = n_layers,
@@ -73,7 +73,7 @@ class Trainer:
                     activation = activation,
                     n_basis = n_basis)
         print(model)
-        loging(logfile, ("model: %s" % str(model)))
+        loging(self.logfile, ("model: %s" % str(model)))
 
         device = self.dataset._device
         model = model.to(device)
@@ -107,7 +107,7 @@ class Trainer:
         self.dataset.pred_test_dec_graph = self.dataset.pred_test_dec_graph.int().to(device)
 
         print(f"Start training on {device}...")
-        loging(logfile, ("Start training on: %s" % str(device)))
+        loging(self.logfile, ("Start training on: %s" % str(device)))
         for iter_idx in range(iteration):
             model.train()
             logits = model(self.dataset.train_enc_graph, self.dataset.train_dec_graph,
@@ -168,13 +168,13 @@ class Trainer:
 
             if iter_idx and iter_idx  % log_interval == 0:
                 print(log)
-                loging(logfile, (log))
+                loging(self.logfile, (log))
 
         print(f'[END] Best Iter : {best_iter} Best Valid AUC : {best_valid_auc:.4f}, Best Valid Precision : {best_valid_precision:.4f}, \
             Best Valid Recall : {best_valid_recall:.4f}, \r\n Best Test AUC : {best_test_auc:.4f}, Best Test Precision : {best_test_precision:.4f}, Best Test Recall : {best_test_recall:.4f}')
-        loging(logfile, (f'[END] Best Iter : {best_iter} Best Valid AUC : {best_valid_auc:.4f}, Best Valid Precision : {best_valid_precision:.4f}, \
+        loging(self.logfile, (f'[END] Best Iter : {best_iter} Best Valid AUC : {best_valid_auc:.4f}, Best Valid Precision : {best_valid_precision:.4f}, \
             Best Valid Recall : {best_valid_recall:.4f}, \r\n Best Test AUC : {best_test_auc:.4f}, Best Test Precision : {best_test_precision:.4f}, Best Test Recall : {best_test_recall:.4f}'))
-        f.close()
+        # f.close()
 
     def evaluate(self, model, dataset, possible_edge_types, data_type = 'pred_test'):
         if data_type == "valid":

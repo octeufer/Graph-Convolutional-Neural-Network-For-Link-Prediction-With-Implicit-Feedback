@@ -8,8 +8,16 @@ import torch as th
 import dgl
 from dgl.data.utils import download, extract_archive, get_download_dir
 
+from sklearn import preprocessing
+
 def to_etype_name(purchase):
     return str(purchase).replace('.', '_')
+
+def loging(logfile,str_in):
+    """ Log a string in a file """
+    with open(logfile,'a') as f:
+        f.write(str_in+'\n')
+    print(str_in)
 
 class ASOS(object):
     """ASOS dataset used by GCMC model
@@ -76,7 +84,7 @@ class ASOS(object):
     valid_ratio : float, optional
         Ratio of validation data
     """
-    def __init__(self, name, device, mix_cpu_gpu=False,
+    def __init__(self, name, device, logfile, mix_cpu_gpu=False,
                  use_one_hot_fea=False, symm=True,
                  test_ratio=0.1, valid_ratio=0.1):
         self._name = name
@@ -85,10 +93,12 @@ class ASOS(object):
         self._test_ratio = test_ratio
         self._valid_ratio = valid_ratio
         self._dir = os.path.join('C:\Workspace\ASOS_TechTest')
+        self.logfile = logfile
         print("Starting processing {} ...".format(self._name))
+        loging(self.logfile, ("Starting processing {} ...".format(self._name)))
         col_names = ['customerId', 'productId', 'purchased', 'isFemale', 'country', 'yearOfBirth', \
             'isPremier', 'brand', 'price', 'productType', 'onSale', 'dateOnSite']
-        self.all_train_info = pd.read_csv(os.path.join(self._dir, 'trainset_sample.csv'), sep=',', header=None,
+        self.all_train_info = pd.read_csv(os.path.join(self._dir, 'trainset_balance2.csv'), sep=',', header=None,
                                     names=col_names, engine='python')
 
         col_names_test = ['customerId', 'productId', 'isFemale', 'country', 'yearOfBirth', \
@@ -99,6 +109,7 @@ class ASOS(object):
         self.customer_info = self.all_train_info[['customerId', 'isFemale', 'country', 'yearOfBirth', 'isPremier']].drop_duplicates()
         self.product_info = self.all_train_info[['productId', 'brand', 'price', 'productType', 'onSale', 'dateOnSite']].drop_duplicates()
         print('......')
+        loging(self.logfile, ("......"))
 
         self.all_purchase_info = self.all_train_info[['customerId', 'productId', 'purchased']]
         num_test = int(np.ceil(self.all_purchase_info.shape[0] * self._test_ratio))
@@ -109,6 +120,7 @@ class ASOS(object):
         self.pred_purchase = self.all_pred_test_info[['customerId', 'productId']]
 
         print('......')
+        loging(self.logfile, ("......"))
         num_valid = int(np.ceil(self.all_train_purchase_info.shape[0] * self._valid_ratio))
         shuffled_idx = np.random.permutation(self.all_train_purchase_info.shape[0])
         self.valid_purchase_info = self.all_train_purchase_info.iloc[shuffled_idx[: num_valid]]
@@ -121,12 +133,20 @@ class ASOS(object):
         print("\t\tValid purchase pairs : {}".format(self.valid_purchase_info.shape[0]))
         print("\tTest purchase pairs  : {}".format(self.test_purchase_info.shape[0]))
         print("\tpred Test purchase pairs  : {}".format(self.pred_purchase.shape[0]))
+        loging(self.logfile, ("All purchase pairs : {}".format(self.all_purchase_info.shape[0])))
+        loging(self.logfile, ("\tAll train purchase pairs : {}".format(self.all_train_purchase_info.shape[0])))
+        loging(self.logfile, ("\t\tTrain purchase pairs : {}".format(self.train_purchase_info.shape[0])))
+        loging(self.logfile, ("\t\tValid purchase pairs : {}".format(self.valid_purchase_info.shape[0])))
+        loging(self.logfile, ("\tTest purchase pairs  : {}".format(self.test_purchase_info.shape[0])))
+        loging(self.logfile, ("\tpred Test purchase pairs  : {}".format(self.pred_purchase.shape[0])))
 
         # Map customer/product to the global id
         self.global_customer_id_map = {ele: i for i, ele in enumerate(self.customer_info['customerId'])}
         self.global_product_id_map = {ele: i for i, ele in enumerate(self.product_info['productId'])}
         print('Total customer number = {}, product number = {}'.format(len(self.global_customer_id_map),
                                                                  len(self.global_product_id_map)))
+        loging(self.logfile, ('Total customer number = {}, product number = {}'.format(len(self.global_customer_id_map),
+                                                                 len(self.global_product_id_map))))
         self._num_customer = len(self.global_customer_id_map)
         self._num_product = len(self.global_product_id_map)
 
@@ -153,6 +173,7 @@ class ASOS(object):
         info_line += "\ncustomer: {}".format(self.customer_feature_shape)
         info_line += "\nproduct: {}".format(self.product_feature_shape)
         print(info_line)
+        loging(self.logfile, (info_line))
 
         all_train_purchase_pairs, all_train_purchase_values = self._generate_pair_value(self.all_train_purchase_info)
         train_purchase_pairs, train_purchase_values = self._generate_pair_value(self.train_purchase_info)
@@ -214,6 +235,31 @@ class ASOS(object):
             self.pred_test_dec_graph.number_of_nodes('customer'), self.pred_test_dec_graph.number_of_nodes('item'),
             self.pred_test_dec_graph.number_of_edges()))
 
+        loging(self.logfile, ("Train enc graph: \t#customer:{}\t#product:{}\t#pairs:{}".format(
+            self.train_enc_graph.number_of_nodes('customer'), self.train_enc_graph.number_of_nodes('item'),
+            _npairs(self.train_enc_graph))))
+        loging(self.logfile, ("Train dec graph: \t#customer:{}\t#product:{}\t#pairs:{}".format(
+            self.train_dec_graph.number_of_nodes('customer'), self.train_dec_graph.number_of_nodes('item'),
+            self.train_dec_graph.number_of_edges())))
+        loging(self.logfile, ("Valid enc graph: \t#customer:{}\t#product:{}\t#pairs:{}".format(
+            self.valid_enc_graph.number_of_nodes('customer'), self.valid_enc_graph.number_of_nodes('item'),
+            _npairs(self.valid_enc_graph))))
+        loging(self.logfile, ("Valid dec graph: \t#customer:{}\t#product:{}\t#pairs:{}".format(
+            self.valid_dec_graph.number_of_nodes('customer'), self.valid_dec_graph.number_of_nodes('item'),
+            self.valid_dec_graph.number_of_edges())))
+        loging(self.logfile, ("Test enc graph: \t#customer:{}\t#product:{}\t#pairs:{}".format(
+            self.test_enc_graph.number_of_nodes('customer'), self.test_enc_graph.number_of_nodes('item'),
+            _npairs(self.test_enc_graph))))
+        loging(self.logfile, ("Test dec graph: \t#customer:{}\t#product:{}\t#pairs:{}".format(
+            self.test_dec_graph.number_of_nodes('customer'), self.test_dec_graph.number_of_nodes('item'),
+            self.test_dec_graph.number_of_edges())))
+        loging(self.logfile, ("Pred enc graph: \t#customer:{}\t#product:{}\t#pairs:{}".format(
+            self.pred_test_enc_graph.number_of_nodes('customer'), self.pred_test_enc_graph.number_of_nodes('item'),
+            _npairs(self.pred_test_enc_graph))))
+        loging(self.logfile, ("Pred dec graph: \t#customer:{}\t#product:{}\t#pairs:{}".format(
+            self.pred_test_dec_graph.number_of_nodes('customer'), self.pred_test_dec_graph.number_of_nodes('item'),
+            self.pred_test_dec_graph.number_of_edges())))
+
     def _update_global_idmap(self):
         for ele in self.pred_purchase['customerId'].unique():
             if ele not in self.global_customer_id_map:
@@ -244,7 +290,7 @@ class ASOS(object):
         info_line += "\ncustomer: {}".format(self.customer_feature_shape)
         info_line += "\nproduct: {}".format(self.product_feature_shape)
         print(info_line)
-
+        loging(self.logfile, (info_line))
         return 
 
     def _generate_pair_value(self, purchase_info):
@@ -356,7 +402,10 @@ class ASOS(object):
         premier = self.customer_info['isPremier'].values.astype(np.float32)
         customer_features = np.concatenate([gender.reshape((nn, 1)), country.reshape((nn, 1)),
                                         year.reshape((nn, 1)), premier.reshape((nn, 1))], axis=1)
-        return customer_features
+        
+        norm_customer_features = preprocessing.MinMaxScaler().fit_transform(customer_features)
+        # norm_customer_features = preprocessing.normalize(customer_features, norm='l2')
+        return norm_customer_features
 
     def _process_product_fea(self):
         """
@@ -379,7 +428,9 @@ class ASOS(object):
                                         type.reshape((nn, 1)), sale.reshape((nn, 1)),
                                         dates.reshape((nn,1))], axis=1)
 
-        return product_features
+        norm_product_features = preprocessing.MinMaxScaler().fit_transform(product_features)
+        # norm_product_features = preprocessing.normalize(product_features, norm='l2')
+        return norm_product_features
 
 if __name__ == '__main__':
     ASOS("ASOS", device=th.device('cpu'), symm=True)
